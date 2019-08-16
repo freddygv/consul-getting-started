@@ -136,7 +136,8 @@ func (s *server) runTTL(ctx context.Context) {
 }
 
 // watchKV watches a Key/Value pair in Consul for changes and sets the value internally
-// TODO: Needs rate limiting
+// See below for implementation details:
+// https://www.consul.io/api/features/blocking.html#implementation-details
 func (s *server) watchKV(ctx context.Context, key string) {
 	var index uint64 = 1
 	var lastIndex uint64
@@ -200,7 +201,7 @@ func (s *server) watchKV(ctx context.Context, key string) {
 		}
 		s.cfg.mu.Unlock()
 
-		log.Printf("[INFO] %s updated to: %s", decoded)
+		log.Printf("[INFO] %s updated: %s", key, decoded)
 
 		lastIndex = index
 	}

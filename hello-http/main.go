@@ -183,7 +183,7 @@ func (s *server) watchKV(ctx context.Context, key string) {
 		}
 		s.cfg.mu.Unlock()
 
-		log.Printf("[INFO] %s updated to: %s", decoded)
+		log.Printf("[INFO] %s updated: %s", key, decoded)
 
 		lastIndex = index
 	}
