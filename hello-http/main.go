@@ -11,6 +11,12 @@ import (
 	"strconv"
 
 	"github.com/matryer/way"
+	"golang.org/x/time/rate"
+)
+
+const (
+	limiterRate  = 0.1
+	limiterBurst = 2
 )
 
 func main() {
@@ -115,14 +121,23 @@ func (s *server) enableHealth() http.HandlerFunc {
 }
 
 // watchKV watches a Key/Value pair in Consul for changes and sets the value internally
-// TODO: Needs rate limiting
+// See below for implementation details:
+// https://www.consul.io/api/features/blocking.html#implementation-details
 func (s *server) watchKV(ctx context.Context, key string) {
 	var index uint64 = 1
 	var lastIndex uint64
 
-	for {
-		target := fmt.Sprintf("%s%s%s?index=%d", StringVal(s.cfg.ConsulAddr), StringVal(s.cfg.KVPath), key, index)
+	limiter := rate.NewLimiter(limiterRate, limiterBurst)
 
+	for {
+		// Wait until limiter allows request to happen
+		if err := limiter.Wait(nil); err != nil {
+			log.Println("failed to wait for limiter")
+			continue
+		}
+
+		// Make blocking query to watch key
+		target := fmt.Sprintf("%s%s%s?index=%d", StringVal(s.cfg.ConsulAddr), StringVal(s.cfg.KVPath), key, index)
 		resp, err := http.Get(target)
 		if err != nil {
 			log.Printf("failed to get '%s': %v", target, err)
@@ -140,8 +155,6 @@ func (s *server) watchKV(ctx context.Context, key string) {
 				continue
 			}
 		}
-		// Reset if it goes backwards or is 0
-		// See: https://www.consul.io/api/features/blocking.html#implementation-details
 		if index < lastIndex || index == 0 {
 			index = 1
 			lastIndex = 1
@@ -169,6 +182,8 @@ func (s *server) watchKV(ctx context.Context, key string) {
 			}
 		}
 		s.cfg.mu.Unlock()
+
+		log.Printf("[INFO] %s updated to: %s", decoded)
 
 		lastIndex = index
 	}

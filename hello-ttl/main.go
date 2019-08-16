@@ -12,6 +12,12 @@ import (
 	"time"
 
 	"github.com/matryer/way"
+	"golang.org/x/time/rate"
+)
+
+const (
+	limiterRate  = 0.1
+	limiterBurst = 2
 )
 
 func main() {
@@ -135,7 +141,16 @@ func (s *server) watchKV(ctx context.Context, key string) {
 	var index uint64 = 1
 	var lastIndex uint64
 
+	limiter := rate.NewLimiter(limiterRate, limiterBurst)
+
 	for {
+		// Wait until limiter allows request to happen
+		if err := limiter.Wait(nil); err != nil {
+			log.Println("failed to wait for limiter")
+			continue
+		}
+
+		// Make blocking query to watch key
 		target := fmt.Sprintf("%s%s%s?index=%d", StringVal(s.cfg.ConsulAddr), StringVal(s.cfg.KVPath), key, index)
 
 		resp, err := http.Get(target)
@@ -184,6 +199,8 @@ func (s *server) watchKV(ctx context.Context, key string) {
 			}
 		}
 		s.cfg.mu.Unlock()
+
+		log.Printf("[INFO] %s updated to: %s", decoded)
 
 		lastIndex = index
 	}
