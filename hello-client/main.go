@@ -45,7 +45,7 @@ func requestHello() error {
 		return fmt.Errorf("failed to read body: %v", err)
 	}
 
-	log.Println(string(body))
+	log.Println(fmt.Sprintf("%s says: %s", target, body))
 	return nil
 }
 
