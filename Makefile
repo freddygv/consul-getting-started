@@ -1,2 +1,3 @@
 all:
-	make -C hello/
+	make -C hello-http/
+	make -C hello-ttl/

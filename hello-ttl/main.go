@@ -22,7 +22,7 @@ func main() {
 	flag.Parse()
 
 	log.Printf("[INFO] Starting server...")
-	log.Printf("[INFO] Hello service listening on %s", *httpAddr)
+	log.Printf("[INFO] Hello service with TTL check listening on %s", *httpAddr)
 
 	s := newServer(*configFile)
 
@@ -58,7 +58,6 @@ func newServer(cfgFile string) *server {
 	}
 
 	s.router.HandleFunc("GET", "/hello", s.handleHello())
-	s.router.HandleFunc("GET", "/healthz", s.handleHealth())
 	s.router.HandleFunc("PUT", "/health/pass", s.enableHealth())
 	s.router.HandleFunc("PUT", "/health/fail", s.disableHealth())
 
@@ -80,21 +79,6 @@ func (s *server) handleHello() http.HandlerFunc {
 		default:
 			fmt.Fprintln(w, "Hello World")
 		}
-	}
-}
-
-func (s *server) handleHealth() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		s.cfg.mu.RLock()
-		defer s.cfg.mu.RUnlock()
-
-		// Fail check if checks aren't enabled
-		if !BoolVal(s.cfg.EnableChecks) {
-			w.WriteHeader(http.StatusGone)
-			return
-		}
-
-		fmt.Fprintln(w, "I'm alive")
 	}
 }
 
