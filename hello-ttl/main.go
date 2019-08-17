@@ -109,6 +109,11 @@ func (s *server) enableHealth() http.HandlerFunc {
 
 func (s *server) runTTL(ctx context.Context) {
 	ticker := time.NewTicker(DurationVal(s.cfg.TTLInterval))
+
+	httpClient := http.Client{
+		Timeout: time.Second * 10,
+	}
+
 	go func() {
 		for {
 			select {
@@ -116,20 +121,36 @@ func (s *server) runTTL(ctx context.Context) {
 				ticker.Stop()
 				return
 			default:
+				<-ticker.C
+
 				s.cfg.mu.RLock()
 				{
 					if BoolVal(s.cfg.EnableChecks) {
 						target := StringVal(s.cfg.ConsulAddr) + StringVal(s.cfg.TTLEndpoint) + StringVal(s.cfg.TTLID)
-						_, err := http.NewRequest("PUT", target, nil)
+						req, err := http.NewRequest("PUT", target, nil)
 						if err != nil {
-							log.Printf("[ERR] failed to update TTL check: %v", err)
+							log.Printf("[ERR] ttl: failed to create update request: %v", err)
+							s.cfg.mu.RUnlock()
+							continue
 						}
+						resp, err := httpClient.Do(req)
+						if err != nil {
+							log.Printf("[ERR] ttl: failed to do update request: %v", resp.Status, err)
+							s.cfg.mu.RUnlock()
+							continue
+						}
+						resp.Body.Close()
+
+						if resp.StatusCode != http.StatusOK {
+							log.Printf("[ERR] ttl: failed to update check status. resp code: %d", resp.StatusCode)
+							s.cfg.mu.RUnlock()
+							continue
+						}
+
 						log.Printf("[INFO] ttl: Updated check '%s' to passing", StringVal(s.cfg.TTLID))
 					}
 				}
 				s.cfg.mu.RUnlock()
-
-				<-ticker.C
 			}
 		}
 	}()
