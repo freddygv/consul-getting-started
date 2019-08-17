@@ -14,6 +14,7 @@ type serverConfig struct {
 	Language     *string        `json:"language"`
 	ConsulAddr   *string        `json:"consul_addr"`
 	KVPath       *string        `json:"kv_path"`
+	ServiceName  *string        `json:"service_name"`
 	TTLEndpoint  *string        `json:"ttl_endpoint"`
 	TTLID        *string        `json:"ttl_id"`
 	TTLInterval  *time.Duration `json:"ttl_interval"`
@@ -36,6 +37,9 @@ func (c *serverConfig) finalize() *serverConfig {
 	}
 	if c.KVPath == nil {
 		c.KVPath = def.KVPath
+	}
+	if c.ServiceName == nil {
+		c.ServiceName = def.ServiceName
 	}
 	if c.TTLEndpoint == nil {
 		c.TTLEndpoint = def.TTLEndpoint
@@ -63,12 +67,13 @@ func defaultConfig() serverConfig {
 		Language:     StringPtr("english"),
 		ConsulAddr:   StringPtr("http://localhost:8500"),
 		KVPath:       StringPtr("/v1/kv/service/hello/"),
+		ServiceName:  StringPtr("hello-http/"),
 		TTLEndpoint:  StringPtr("/v1/agent/check/pass/"),
 		TTLInterval:  DurationPtr(5 * time.Second),
 		TTLID:        StringPtr("hello_ttl"),
 		EnableChecks: BoolPtr(true),
 		DebugMode:    BoolPtr(false),
-		ToWatch:      SlicePtr([]string{}),
+		ToWatch:      SlicePtr([]string{"hello-http/enable_checks"}),
 	}
 }
 

@@ -6,12 +6,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/matryer/way"
+	"golang.org/x/time/rate"
 	"log"
 	"net/http"
 	"strconv"
-
-	"github.com/matryer/way"
-	"golang.org/x/time/rate"
 )
 
 const (
@@ -27,7 +26,6 @@ func main() {
 	flag.Parse()
 
 	log.Printf("[INFO] Starting server...")
-	log.Printf("[INFO] Hello service with HTTP check listening on %s", *httpAddr)
 
 	s := newServer(*configFile)
 
@@ -36,9 +34,10 @@ func main() {
 
 	for _, key := range SliceVal(s.cfg.ToWatch) {
 		log.Printf("[INFO] Running watch for key '%s'", key)
-		s.watchKV(ctx, key)
+		go s.watchKV(ctx, key)
 	}
 
+	log.Printf("[INFO] Hello service with HTTP check listening on %s", *httpAddr)
 	log.Fatal(http.ListenAndServe(*httpAddr, s.router))
 }
 
@@ -131,8 +130,8 @@ func (s *server) watchKV(ctx context.Context, key string) {
 
 	for {
 		// Wait until limiter allows request to happen
-		if err := limiter.Wait(nil); err != nil {
-			log.Println("failed to wait for limiter")
+		if err := limiter.Wait(context.Background()); err != nil {
+			log.Printf("[ERR] watch '%s': failed to wait for limiter", key)
 			continue
 		}
 
@@ -140,10 +139,9 @@ func (s *server) watchKV(ctx context.Context, key string) {
 		target := fmt.Sprintf("%s%s%s?index=%d", StringVal(s.cfg.ConsulAddr), StringVal(s.cfg.KVPath), key, index)
 		resp, err := http.Get(target)
 		if err != nil {
-			log.Printf("failed to get '%s': %v", target, err)
+			log.Printf("[ERR] watch '%s': failed to get '%s': %v", key, target, err)
 			continue
 		}
-		defer resp.Body.Close()
 
 		// Parse the raft index for this key (X-Consul-Index)
 		header := resp.Header
@@ -151,10 +149,12 @@ func (s *server) watchKV(ctx context.Context, key string) {
 		if indexStr != "" {
 			index, err = strconv.ParseUint(indexStr, 10, 64)
 			if err != nil {
-				log.Printf("failed to parse X-Consul-Index: %v", err)
+				log.Printf("[ERR] watch '%s': failed to parse X-Consul-Index: %v", key, err)
 				continue
 			}
 		}
+		// Reset if it goes backwards or is 0
+		// See: https://www.consul.io/api/features/blocking.html#implementation-details
 		if index < lastIndex || index == 0 {
 			index = 1
 			lastIndex = 1
@@ -162,31 +162,59 @@ func (s *server) watchKV(ctx context.Context, key string) {
 			// TODO: Continuing implies we don't trust the data on the server
 			continue
 		}
+		lastIndex = index
 
 		data := make([]keyResponse, 0)
 		json.NewDecoder(resp.Body).Decode(&data)
+		resp.Body.Close()
+
+		// Key might not exist yet
+		if len(data) == 0 {
+			log.Printf("[WARN] watch '%s': empty response, key does not exist", key)
+			continue
+		}
 
 		// We are not recursing on a key-prefix so these arrays will only return one value
 		decoded, err := base64.StdEncoding.DecodeString(data[0].Value)
 		if err != nil {
-			log.Printf("failed to decode value: '%s'", data[0].Value)
+			log.Printf("[ERR] watch '%s': failed to decode value: '%s'", key, data[0].Value)
+			continue
+		}
+		strVal := string(decoded)
+
+		err = nil
+		switch key {
+		case "language":
+			s.setLanguage(strVal)
+		case StringVal(s.cfg.ServiceName) + "enable_checks":
+			err = s.setEnableChecks(strVal)
+		}
+		if err != nil {
+			log.Printf("[ERR] watch '%s': %v", key, err)
 			continue
 		}
 
-		s.cfg.mu.Lock()
-		{
-			// Set new value, may be idempotent
-			switch key {
-			case "language":
-				s.cfg.Language = StringPtr(string(decoded))
-			}
-		}
-		s.cfg.mu.Unlock()
-
-		log.Printf("[INFO] %s updated: %s", key, decoded)
-
-		lastIndex = index
+		log.Printf("[INFO] watch '%s': updated to %s", key, strVal)
 	}
+}
+
+func (s *server) setLanguage(lang string) {
+	s.cfg.mu.Lock()
+	defer s.cfg.mu.Unlock()
+
+	s.cfg.Language = StringPtr(lang)
+}
+
+func (s *server) setEnableChecks(val string) error {
+	s.cfg.mu.Lock()
+	defer s.cfg.mu.Unlock()
+
+	parsed, err := strconv.ParseBool(val)
+	if err != nil {
+		return fmt.Errorf("failed to parse enable_checks bool '%s': %v", val, err)
+	}
+	s.cfg.EnableChecks = BoolPtr(parsed)
+	return nil
 }
 
 type keyResponse struct {
