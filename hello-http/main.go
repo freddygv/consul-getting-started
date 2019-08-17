@@ -54,7 +54,7 @@ type server struct {
 func newServer(cfgFile string) *server {
 	config, err := loadConfig(cfgFile)
 	if err != nil {
-		log.Printf("[ERR] failed to load config from file '%s', using default. err: %v", cfgFile, err)
+		log.Printf("[WARN] failed to load config from file '%s', using default. err: %v", cfgFile, err)
 	}
 	config = config.merge(defaultConfig())
 
@@ -82,7 +82,7 @@ func (s *server) captureReload(ctx context.Context, cfgFile string) {
 			log.Printf("[INFO] captured signal: %v. reloading config...", sig)
 			config, err := loadConfig(cfgFile)
 			if err != nil {
-				log.Printf("[ERR] failed to load config from file '%s', using default. err: %v", cfgFile, err)
+				log.Printf("[WARN] failed to load config from file '%s', using default. err: %v", cfgFile, err)
 			}
 			s.cfg.mu.Lock()
 			{
