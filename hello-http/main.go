@@ -10,7 +10,10 @@ import (
 	"golang.org/x/time/rate"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 )
 
 const (
@@ -37,6 +40,8 @@ func main() {
 		go s.watchKV(ctx, key)
 	}
 
+	go s.captureReload(ctx, *configFile)
+
 	log.Printf("[INFO] Hello service with HTTP check listening on %s", *httpAddr)
 	log.Fatal(http.ListenAndServe(*httpAddr, s.router))
 }
@@ -51,7 +56,7 @@ func newServer(cfgFile string) *server {
 	if err != nil {
 		log.Printf("[ERR] failed to load config from file '%s', using default. err: %v", cfgFile, err)
 	}
-	config = config.finalize()
+	config = config.merge(defaultConfig())
 
 	s := server{
 		router: way.NewRouter(),
@@ -64,6 +69,28 @@ func newServer(cfgFile string) *server {
 	s.router.HandleFunc("PUT", "/health/fail", s.disableHealth())
 
 	return &s
+}
+
+// Reload config from file on HUP
+func (s *server) captureReload(ctx context.Context, cfgFile string) {
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGHUP)
+
+	for {
+		select {
+		case sig := <-sigCh:
+			log.Printf("[INFO] captured signal: %v. reloading config...", sig)
+			config, err := loadConfig(cfgFile)
+			if err != nil {
+				log.Printf("[ERR] failed to load config from file '%s', using default. err: %v", cfgFile, err)
+			}
+			s.cfg.mu.Lock()
+			{
+				s.cfg = config.merge(s.cfg)
+			}
+			s.cfg.mu.Unlock()
+		}
+	}
 }
 
 func (s *server) handleHello() http.HandlerFunc {

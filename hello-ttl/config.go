@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 	"sync"
-	"time"
 )
 
 type serverConfig struct {
@@ -17,59 +16,53 @@ type serverConfig struct {
 	ServiceName  *string        `json:"service_name"`
 	TTLEndpoint  *string        `json:"ttl_endpoint"`
 	TTLID        *string        `json:"ttl_id"`
-	TTLInterval  *time.Duration `json:"ttl_interval"`
 	EnableChecks *bool          `json:"enable_checks"`
 	DebugMode    *bool          `json:"debug_mode"`
 	ToWatch      *[]string      `json:"keys_to_watch"`
 }
 
-func (c *serverConfig) finalize() *serverConfig {
-	def := defaultConfig()
-
+func (c *serverConfig) merge(other *serverConfig) *serverConfig {
+	o := *other
 	if c == nil {
-		return &def
+		return &o
 	}
 	if c.Language == nil {
-		c.Language = def.Language
+		c.Language = o.Language
 	}
 	if c.ConsulAddr == nil {
-		c.ConsulAddr = def.ConsulAddr
+		c.ConsulAddr = o.ConsulAddr
 	}
 	if c.KVPath == nil {
-		c.KVPath = def.KVPath
+		c.KVPath = o.KVPath
 	}
 	if c.ServiceName == nil {
-		c.ServiceName = def.ServiceName
+		c.ServiceName = o.ServiceName
 	}
 	if c.TTLEndpoint == nil {
-		c.TTLEndpoint = def.TTLEndpoint
+		c.TTLEndpoint = o.TTLEndpoint
 	}
 	if c.TTLID == nil {
-		c.TTLID = def.TTLID
-	}
-	if c.TTLInterval == nil {
-		c.TTLInterval = def.TTLInterval
+		c.TTLID = o.TTLID
 	}
 	if c.EnableChecks == nil {
-		c.EnableChecks = def.EnableChecks
+		c.EnableChecks = o.EnableChecks
 	}
 	if c.DebugMode == nil {
-		c.DebugMode = def.DebugMode
+		c.DebugMode = o.DebugMode
 	}
 	if c.ToWatch == nil {
-		c.ToWatch = def.ToWatch
+		c.ToWatch = o.ToWatch
 	}
 	return c
 }
 
-func defaultConfig() serverConfig {
-	return serverConfig{
+func defaultConfig() *serverConfig {
+	return &serverConfig{
 		Language:     StringPtr("english"),
 		ConsulAddr:   StringPtr("http://localhost:8500"),
 		KVPath:       StringPtr("/v1/kv/service/hello/"),
 		ServiceName:  StringPtr("hello-ttl/"),
 		TTLEndpoint:  StringPtr("/v1/agent/check/pass/"),
-		TTLInterval:  DurationPtr(5 * time.Second),
 		TTLID:        StringPtr("hello_ttl"),
 		EnableChecks: BoolPtr(true),
 		DebugMode:    BoolPtr(false),
@@ -121,20 +114,6 @@ func StringVal(s *string) string {
 		return ""
 	}
 	return *s
-}
-
-// DurationPtr returns a pointer to the given time.Duration.
-func DurationPtr(t time.Duration) *time.Duration {
-	return &t
-}
-
-// DurationVal returns the value of the string at the pointer, or 0 if the
-// pointer is nil.
-func DurationVal(t *time.Duration) time.Duration {
-	if t == nil {
-		return time.Duration(0)
-	}
-	return *t
 }
 
 // SlicePtr returns a pointer to the given string slice.

@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/matryer/way"
@@ -18,6 +21,7 @@ import (
 const (
 	limiterRate  = 0.1
 	limiterBurst = 2
+	TTLInterval = 2 * time.Second
 )
 
 func main() {
@@ -41,6 +45,8 @@ func main() {
 		go s.watchKV(ctx, key)
 	}
 
+	go s.captureReload(ctx, *configFile)
+
 	log.Printf("[INFO] Hello service with TTL check listening on %s", *httpAddr)
 	log.Fatal(http.ListenAndServe(*httpAddr, s.router))
 }
@@ -55,7 +61,7 @@ func newServer(cfgFile string) *server {
 	if err != nil {
 		log.Printf("[ERR] failed to load config from file '%s', using default. err: %v", cfgFile, err)
 	}
-	config = config.finalize()
+	config = config.merge(defaultConfig())
 
 	s := server{
 		router: way.NewRouter(),
@@ -67,6 +73,28 @@ func newServer(cfgFile string) *server {
 	s.router.HandleFunc("PUT", "/health/fail", s.disableHealth())
 
 	return &s
+}
+
+// Reload config from file on HUP
+func (s *server) captureReload(ctx context.Context, cfgFile string) {
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGHUP)
+
+	for {
+		select {
+		case sig := <-sigCh:
+			log.Printf("[INFO] captured signal: %v. reloading config...", sig)
+			config, err := loadConfig(cfgFile)
+			if err != nil {
+				log.Printf("[ERR] failed to load config from file '%s', using default. err: %v", cfgFile, err)
+			}
+			s.cfg.mu.Lock()
+			{
+				s.cfg = config.merge(s.cfg)
+			}
+			s.cfg.mu.Unlock()
+		}
+	}
 }
 
 func (s *server) handleHello() http.HandlerFunc {
@@ -108,7 +136,7 @@ func (s *server) enableHealth() http.HandlerFunc {
 }
 
 func (s *server) runTTL(ctx context.Context) {
-	ticker := time.NewTicker(DurationVal(s.cfg.TTLInterval))
+	ticker := time.NewTicker(TTLInterval)
 
 	httpClient := http.Client{
 		Timeout: time.Second * 10,
@@ -162,10 +190,19 @@ func (s *server) runTTL(ctx context.Context) {
 func (s *server) watchKV(ctx context.Context, key string) {
 	var index uint64 = 1
 	var lastIndex uint64
+	var consulAddr, kvPath, svcName string
 
 	limiter := rate.NewLimiter(limiterRate, limiterBurst)
 
 	for {
+		s.cfg.mu.RLock()
+		{
+			consulAddr = StringVal(s.cfg.ConsulAddr)
+			kvPath = StringVal(s.cfg.KVPath)
+			svcName = StringVal(s.cfg.ServiceName)
+		}
+		s.cfg.mu.RUnlock()
+
 		// Wait until limiter allows request to happen
 		if err := limiter.Wait(context.Background()); err != nil {
 			log.Printf("[ERR] watch '%s': failed to wait for limiter", key)
@@ -173,7 +210,7 @@ func (s *server) watchKV(ctx context.Context, key string) {
 		}
 
 		// Make blocking query to watch key
-		target := fmt.Sprintf("%s%s%s?index=%d", StringVal(s.cfg.ConsulAddr), StringVal(s.cfg.KVPath), key, index)
+		target := fmt.Sprintf("%s%s%s?index=%d", consulAddr, kvPath, key, index)
 		resp, err := http.Get(target)
 		if err != nil {
 			log.Printf("[ERR] watch '%s': failed to get '%s': %v", key, target, err)
@@ -224,7 +261,7 @@ func (s *server) watchKV(ctx context.Context, key string) {
 		switch key {
 		case "language":
 			s.setLanguage(strVal)
-		case StringVal(s.cfg.ServiceName) + "enable_checks":
+		case svcName + "enable_checks":
 			err = s.setEnableChecks(strVal)
 		}
 		if err != nil {
