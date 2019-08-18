@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
+	"reflect"
+	"strconv"
 	"time"
 
 	"github.com/miekg/dns"
@@ -49,7 +52,7 @@ func requestHello() error {
 	target := fmt.Sprintf("http://%s/%s", addr, endpoint)
 	resp, err := http.Get(target)
 	if err != nil {
-		return fmt.Errorf("failed to get '%s': %v", target, err)
+		return err
 	}
 	defer resp.Body.Close()
 
@@ -77,16 +80,26 @@ func resolveAddr() (string, error) {
 
 	// Get port from SRV record in Answer
 	var srv *dns.SRV
+	var ok bool
 	for _, ans := range r.Answer {
-		srv = ans.(*dns.SRV)
+		srv, ok = ans.(*dns.SRV)
+		if !ok {
+			return "", fmt.Errorf("answer was not of type dns.SRV, got: %v", reflect.TypeOf(ans))
+		}
 		break
 	}
+	port := strconv.Itoa(int(srv.Port))
 
 	// Get IP from A record in the Additional Section
 	var a *dns.A
 	for _, ans := range r.Extra {
-		a = ans.(*dns.A)
+		a, ok = ans.(*dns.A)
+		if !ok {
+			return "", fmt.Errorf("additional record was not of type dns.A, got: %v", reflect.TypeOf(ans))
+		}
 		break
 	}
-	return fmt.Sprintf("%s:%d", a.A, srv.Port), nil
+	addr := a.A.String()
+
+	return net.JoinHostPort(addr, port), nil
 }
