@@ -5,7 +5,7 @@ APP = hello-http-init
 all: push-docker
 
 build-docker:
-	docker build -t $(APP):$(VERSION) .
+	docker build -t $(ACCOUNT)/$(APP):$(VERSION) .
 
 push-docker: build-docker
-    docker push $(REPO)/$(APP):$(VERSION)
+	docker push $(ACCOUNT)/$(APP):$(VERSION)
