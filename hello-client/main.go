@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/miekg/dns"
 )
@@ -14,13 +15,26 @@ const (
 	endpoint  = "hello"
 	hostname  = "hello.service.consul"
 	consulDNS = "127.0.0.1:8600"
+	interval  = 2 * time.Second
 )
 
 func main() {
+	var (
+		loop = flag.Bool("loop", true, "Make continuous requests to hello service.")
+	)
 	flag.Parse()
 
-	if err := requestHello(); err != nil {
-		log.Fatalf("[ERR] failed to dial hello service: %v", err)
+	ticker := time.NewTicker(interval)
+
+	for {
+		if err := requestHello(); err != nil {
+			log.Printf("[ERR] failed to dial hello service: %v", err)
+		}
+		if !*loop {
+			// Only run once if not looping
+			break
+		}
+		<-ticker.C
 	}
 }
 
