@@ -29,7 +29,6 @@ func main() {
 	flag.Parse()
 
 	ticker := time.NewTicker(interval)
-
 	for {
 		if err := requestHello(*consulDNS); err != nil {
 			log.Printf("[ERR] failed to dial hello service: %v", err)
