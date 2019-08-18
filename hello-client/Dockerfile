@@ -7,7 +7,7 @@ RUN go mod download
 RUN CGO_ENABLED=0 go build -o client .
 
 FROM alpine:3.10
-COPY --from=builder /client/client /usr/bin/client
+COPY --from=builder /hello-client /usr/bin/client
 RUN adduser -D client
 USER client
 ENTRYPOINT ["client"]

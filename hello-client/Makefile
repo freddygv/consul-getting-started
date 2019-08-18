@@ -1,11 +1,11 @@
 VERSION = 0.1.0
 ACCOUNT = freddygv
-APP = hello-ttl
+APP = hello-client
 
 all: build
 
 build:
-	go build -o bin/hello
+	go build -o bin/client
 
 build-docker:
 	docker build -t $(APP):$(VERSION) .

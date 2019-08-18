@@ -1,11 +1,8 @@
 VERSION = 0.1.0
 ACCOUNT = freddygv
-APP = hello-ttl
+APP = hello-ttl-init
 
-all: build
-
-build:
-	go build -o bin/hello
+all: push-docker
 
 build-docker:
 	docker build -t $(APP):$(VERSION) .
