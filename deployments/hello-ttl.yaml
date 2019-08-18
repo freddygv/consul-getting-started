@@ -16,14 +16,20 @@ spec:
     spec:
       containers:
       - name: hello-ttl
-        image: freddygv/hello-ttl:0.1.0
+        image: freddygv/hello-ttl:v0.1.0
+        args: ["-addr=0.0.0.0:8080"]
+        env:
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
         livenessProbe:
           tcpSocket:
             port: 8080
           initialDelaySeconds: 5
       initContainers:
       - name: hello-ttl-init
-        image: freddygv/hello-ttl-init:0.1.0
+        image: freddygv/hello-ttl-init:v0.1.0
         env:
         - name: POD_IP
           valueFrom:

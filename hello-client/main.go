@@ -16,15 +16,15 @@ import (
 )
 
 const (
-	endpoint  = "hello"
-	hostname  = "hello.service.consul"
-	interval  = 2 * time.Second
+	endpoint = "hello"
+	hostname = "hello.service.consul"
+	interval = 2 * time.Second
 )
 
 func main() {
 	var (
-		loop = flag.Bool("loop", true, "Make continuous requests to hello service.")
-		consulDNS = flag.String("consul-dns", os.Getenv("NODE_IP") + ":8600", "Consul DNS server addr")
+		loop      = flag.Bool("loop", true, "Make continuous requests to hello service.")
+		consulDNS = flag.String("consul-dns", os.Getenv("HOST_IP")+":8600", "Consul DNS server addr")
 	)
 	flag.Parse()
 
@@ -72,7 +72,7 @@ func resolveAddr(srvAddr string) (string, error) {
 	m.SetQuestion(hostname+".", dns.TypeSRV)
 	r, _, err := c.Exchange(&m, srvAddr)
 	if err != nil {
-		log.Fatal(err)
+		return "", fmt.Errorf("failed to query '%s': %v", srvAddr, err)
 	}
 	if len(r.Answer) == 0 {
 		return "", fmt.Errorf("no results")

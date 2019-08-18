@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -151,34 +152,40 @@ func (s *server) runTTL(ctx context.Context) {
 			default:
 				<-ticker.C
 
+				var enableChecks bool
 				s.cfg.mu.RLock()
 				{
-					if BoolVal(s.cfg.EnableChecks) {
-						target := StringVal(s.cfg.ConsulAddr) + StringVal(s.cfg.TTLEndpoint) + StringVal(s.cfg.TTLID)
-						req, err := http.NewRequest("PUT", target, nil)
-						if err != nil {
-							log.Printf("[ERR] ttl: failed to create update request: %v", err)
-							s.cfg.mu.RUnlock()
-							continue
-						}
-						resp, err := httpClient.Do(req)
-						if err != nil {
-							log.Printf("[ERR] ttl: failed to do update request: %v", err)
-							s.cfg.mu.RUnlock()
-							continue
-						}
-						resp.Body.Close()
-
-						if resp.StatusCode != http.StatusOK {
-							log.Printf("[ERR] ttl: failed to update check status. resp code: %d", resp.StatusCode)
-							s.cfg.mu.RUnlock()
-							continue
-						}
-
-						log.Printf("[INFO] ttl: Updated check '%s' to passing", StringVal(s.cfg.TTLID))
-					}
+					enableChecks = BoolVal(s.cfg.EnableChecks)
 				}
 				s.cfg.mu.RUnlock()
+
+				if enableChecks {
+					target := StringVal(s.cfg.ConsulAddr) + StringVal(s.cfg.TTLEndpoint) + StringVal(s.cfg.TTLID)
+					req, err := http.NewRequest("PUT", target, nil)
+					if err != nil {
+						log.Printf("[ERR] ttl: failed to create update request: %v", err)
+						continue
+					}
+					resp, err := httpClient.Do(req)
+					if err != nil {
+						log.Printf("[ERR] ttl: failed to do update request: %v", err)
+						continue
+					}
+					b, err := ioutil.ReadAll(resp.Body)
+					if err != nil {
+						log.Printf("[ERR] ttl: failed to read response body: %v", err)
+						continue
+					}
+					resp.Body.Close()
+
+					if resp.StatusCode != http.StatusOK {
+						log.Printf("[ERR] ttl: failed to update check status. " +
+							"code: %d, resp: %s", resp.StatusCode, b)
+						continue
+					}
+
+					log.Printf("[INFO] ttl: Updated check '%s' to passing", StringVal(s.cfg.TTLID))
+				}
 			}
 		}
 	}()

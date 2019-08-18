@@ -16,7 +16,6 @@ cat <<EOF > hello-service.json
 }
 EOF
 
-curl \
-    --request PUT \
+curl -X PUT \
     --data @hello-service.json \
-    "http://$HOST_IP:8500/v1/agent/service/register"
+    "http://${HOST_IP}:8500/v1/agent/service/register"

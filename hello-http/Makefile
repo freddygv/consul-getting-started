@@ -1,8 +1,8 @@
-VERSION = 0.1.0
+VERSION = v0.1.0
 ACCOUNT = freddygv
 APP = hello-http
 
-all: build
+all: push-docker
 
 build:
 	go build -o bin/hello

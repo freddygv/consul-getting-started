@@ -10,15 +10,15 @@ import (
 
 type serverConfig struct {
 	mu           sync.RWMutex
-	Language     *string        `json:"language"`
-	ConsulAddr   *string        `json:"consul_addr"`
-	KVPath       *string        `json:"kv_path"`
-	ServiceName  *string        `json:"service_name"`
-	TTLEndpoint  *string        `json:"ttl_endpoint"`
-	TTLID        *string        `json:"ttl_id"`
-	EnableChecks *bool          `json:"enable_checks"`
-	DebugMode    *bool          `json:"debug_mode"`
-	ToWatch      *[]string      `json:"keys_to_watch"`
+	Language     *string   `json:"language"`
+	ConsulAddr   *string   `json:"consul_addr"`
+	KVPath       *string   `json:"kv_path"`
+	ServiceName  *string   `json:"service_name"`
+	TTLEndpoint  *string   `json:"ttl_endpoint"`
+	TTLID        *string   `json:"ttl_id"`
+	EnableChecks *bool     `json:"enable_checks"`
+	DebugMode    *bool     `json:"debug_mode"`
+	ToWatch      *[]string `json:"keys_to_watch"`
 }
 
 func (c *serverConfig) merge(other *serverConfig) *serverConfig {
@@ -59,11 +59,11 @@ func (c *serverConfig) merge(other *serverConfig) *serverConfig {
 func defaultConfig() *serverConfig {
 	return &serverConfig{
 		Language:     StringPtr("english"),
-		ConsulAddr:   StringPtr("http://localhost:8500"),
+		ConsulAddr:   StringPtr(fmt.Sprintf("http://%s:8500", os.Getenv("HOST_IP"))),
 		KVPath:       StringPtr("/v1/kv/service/hello/"),
 		ServiceName:  StringPtr("hello-ttl/"),
 		TTLEndpoint:  StringPtr("/v1/agent/check/pass/"),
-		TTLID:        StringPtr("hello_ttl"),
+		TTLID:        StringPtr("hello-ttl"),
 		EnableChecks: BoolPtr(true),
 		DebugMode:    BoolPtr(false),
 		ToWatch:      SlicePtr([]string{"hello-ttl/enable_checks"}),

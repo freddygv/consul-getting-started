@@ -7,7 +7,11 @@
 #
 # https://www.consul.io/docs/platform/k8s/dns.html
 
-DNS_SERVICE_NAME=$1
+if [ -n "$1" ]; then
+  DNS_SERVICE_NAME=$1
+else
+  DNS_SERVICE_NAME="hedgehog-consul-dns"
+fi
 
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
