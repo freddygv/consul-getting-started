@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/miekg/dns"
 	"io/ioutil"
 	"log"
 	"net"
@@ -11,20 +12,20 @@ import (
 	"reflect"
 	"strconv"
 	"time"
-
-	"github.com/miekg/dns"
 )
 
 const (
 	endpoint = "hello"
 	hostname = "hello.service.consul"
 	interval = 2 * time.Second
+	dnsEnv   = "HEDGEHOG_CONSUL_DNS_SERVICE_HOST"
+	dnsPort  = ":53"
 )
 
 func main() {
 	var (
 		loop      = flag.Bool("loop", true, "Make continuous requests to hello service.")
-		consulDNS = flag.String("consul-dns", os.Getenv("HOST_IP")+":8600", "Consul DNS server addr")
+		consulDNS = flag.String("consul-dns", os.Getenv(dnsEnv)+dnsPort, "Consul DNS server addr")
 	)
 	flag.Parse()
 

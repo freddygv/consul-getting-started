@@ -13,3 +13,4 @@
 *.out
 
 consul-helm/
+debugger.yaml
