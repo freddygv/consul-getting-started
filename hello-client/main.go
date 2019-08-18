@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"reflect"
 	"strconv"
 	"time"
@@ -17,20 +18,20 @@ import (
 const (
 	endpoint  = "hello"
 	hostname  = "hello.service.consul"
-	consulDNS = "127.0.0.1:8600"
 	interval  = 2 * time.Second
 )
 
 func main() {
 	var (
 		loop = flag.Bool("loop", true, "Make continuous requests to hello service.")
+		consulDNS = flag.String("consul-dns", os.Getenv("NODE_IP") + ":8600", "Consul DNS server addr")
 	)
 	flag.Parse()
 
 	ticker := time.NewTicker(interval)
 
 	for {
-		if err := requestHello(); err != nil {
+		if err := requestHello(*consulDNS); err != nil {
 			log.Printf("[ERR] failed to dial hello service: %v", err)
 		}
 		if !*loop {
@@ -41,9 +42,9 @@ func main() {
 	}
 }
 
-func requestHello() error {
+func requestHello(consulDNS string) error {
 	// Resolve address with Consul's DNS
-	addr, err := resolveAddr()
+	addr, err := resolveAddr(consulDNS)
 	if err != nil {
 		return fmt.Errorf("failed to resolve addr: %v", err)
 	}
@@ -65,12 +66,12 @@ func requestHello() error {
 	return nil
 }
 
-func resolveAddr() (string, error) {
+func resolveAddr(srvAddr string) (string, error) {
 	var c dns.Client
 	var m dns.Msg
 
 	m.SetQuestion(hostname+".", dns.TypeSRV)
-	r, _, err := c.Exchange(&m, consulDNS)
+	r, _, err := c.Exchange(&m, srvAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
