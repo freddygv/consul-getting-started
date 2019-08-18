@@ -46,8 +46,7 @@ func requestHello() error {
 	}
 
 	// Use result to query Hello service
-	// TODO: Update port
-	target := fmt.Sprintf("http://%s:8080/%s", addr, endpoint)
+	target := fmt.Sprintf("http://%s/%s", addr, endpoint)
 	resp, err := http.Get(target)
 	if err != nil {
 		return fmt.Errorf("failed to get '%s': %v", target, err)
@@ -67,7 +66,7 @@ func resolveAddr() (string, error) {
 	var c dns.Client
 	var m dns.Msg
 
-	m.SetQuestion(hostname+".", dns.TypeA)
+	m.SetQuestion(hostname+".", dns.TypeSRV)
 	r, _, err := c.Exchange(&m, consulDNS)
 	if err != nil {
 		log.Fatal(err)
@@ -76,10 +75,18 @@ func resolveAddr() (string, error) {
 		return "", fmt.Errorf("no results")
 	}
 
-	var Arecord *dns.A
+	// Get port from SRV record in Answer
+	var srv *dns.SRV
 	for _, ans := range r.Answer {
-		Arecord = ans.(*dns.A)
+		srv = ans.(*dns.SRV)
 		break
 	}
-	return Arecord.A.String(), nil
+
+	// Get IP from A record in the Additional Section
+	var a *dns.A
+	for _, ans := range r.Extra {
+		a = ans.(*dns.A)
+		break
+	}
+	return fmt.Sprintf("%s:%d", a.A, srv.Port), nil
 }
