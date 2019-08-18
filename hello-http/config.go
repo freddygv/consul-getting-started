@@ -63,7 +63,7 @@ func defaultConfig() *serverConfig {
 		KVPath:       StringPtr("/v1/kv/service/hello/"),
 		ServiceName:  StringPtr("hello-http/"),
 		TTLEndpoint:  StringPtr("/v1/agent/check/pass/"),
-		TTLID:        StringPtr("hello_ttl"),
+		TTLID:        StringPtr("hello-ttl"),
 		EnableChecks: BoolPtr(true),
 		DebugMode:    BoolPtr(false),
 		ToWatch:      SlicePtr([]string{"hello-http/enable_checks"}),
