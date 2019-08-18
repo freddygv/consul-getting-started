@@ -21,7 +21,7 @@ import (
 const (
 	limiterRate  = 0.1
 	limiterBurst = 2
-	TTLInterval = 2 * time.Second
+	ttlInterval  = 2 * time.Second
 )
 
 func main() {
@@ -136,7 +136,7 @@ func (s *server) enableHealth() http.HandlerFunc {
 }
 
 func (s *server) runTTL(ctx context.Context) {
-	ticker := time.NewTicker(TTLInterval)
+	ticker := time.NewTicker(ttlInterval)
 
 	httpClient := http.Client{
 		Timeout: time.Second * 10,
@@ -163,7 +163,7 @@ func (s *server) runTTL(ctx context.Context) {
 						}
 						resp, err := httpClient.Do(req)
 						if err != nil {
-							log.Printf("[ERR] ttl: failed to do update request: %v", resp.Status, err)
+							log.Printf("[ERR] ttl: failed to do update request: %v", err)
 							s.cfg.mu.RUnlock()
 							continue
 						}
