@@ -3,6 +3,7 @@
 cat <<EOF > hello-service.json
 {
   "Name": "hello",
+  "ID": "hello-ttl",
   "Address": "${POD_IP}",
   "Port": 8080,
   "Check": {
