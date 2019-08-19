@@ -3,35 +3,29 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/miekg/dns"
 	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
-	"os"
-	"reflect"
-	"strconv"
 	"time"
 )
 
 const (
 	endpoint = "hello"
 	hostname = "hello.service.consul"
+	hostPort = "8080"
 	interval = 2 * time.Second
-	dnsEnv   = "HEDGEHOG_CONSUL_DNS_SERVICE_HOST"
-	dnsPort  = ":53"
 )
 
 func main() {
 	var (
 		loop      = flag.Bool("loop", true, "Make continuous requests to hello service.")
-		consulDNS = flag.String("consul-dns", os.Getenv(dnsEnv)+dnsPort, "Consul DNS server addr")
 	)
 	flag.Parse()
 
 	ticker := time.NewTicker(interval)
 	for {
-		if err := requestHello(*consulDNS); err != nil {
+		if err := requestHello(); err != nil {
 			log.Printf("[ERR] failed to dial hello service: %v", err)
 		}
 		if !*loop {
@@ -42,15 +36,17 @@ func main() {
 	}
 }
 
-func requestHello(consulDNS string) error {
-	// Resolve address with Consul's DNS
-	addr, err := resolveAddr(consulDNS)
-	if err != nil {
-		return fmt.Errorf("failed to resolve addr: %v", err)
+func requestHello() error {
+	ips, err := net.LookupIP(hostname)
+	if err != nil || len(ips) == 0 {
+		return fmt.Errorf("could not find IP for '%s': %v", hostname, err)
 	}
 
+	// Use first result since they are shuffled by Consul
+	addr := ips[0].String()
+
 	// Use result to query Hello service
-	target := fmt.Sprintf("http://%s/%s", addr, endpoint)
+	target := fmt.Sprintf("http://%s/%s", net.JoinHostPort(addr, hostPort), endpoint)
 	resp, err := http.Get(target)
 	if err != nil {
 		return err
@@ -64,43 +60,4 @@ func requestHello(consulDNS string) error {
 
 	log.Println(fmt.Sprintf("%s says: %s", target, body))
 	return nil
-}
-
-func resolveAddr(srvAddr string) (string, error) {
-	var c dns.Client
-	var m dns.Msg
-
-	m.SetQuestion(hostname+".", dns.TypeSRV)
-	r, _, err := c.Exchange(&m, srvAddr)
-	if err != nil {
-		return "", fmt.Errorf("failed to query '%s': %v", srvAddr, err)
-	}
-	if len(r.Answer) == 0 {
-		return "", fmt.Errorf("no results")
-	}
-
-	// Get port from SRV record in Answer
-	var srv *dns.SRV
-	var ok bool
-	for _, ans := range r.Answer {
-		srv, ok = ans.(*dns.SRV)
-		if !ok {
-			return "", fmt.Errorf("answer was not of type dns.SRV, got: %v", reflect.TypeOf(ans))
-		}
-		break
-	}
-	port := strconv.Itoa(int(srv.Port))
-
-	// Get IP from A record in the Additional Section
-	var a *dns.A
-	for _, ans := range r.Extra {
-		a, ok = ans.(*dns.A)
-		if !ok {
-			return "", fmt.Errorf("additional record was not of type dns.A, got: %v", reflect.TypeOf(ans))
-		}
-		break
-	}
-	addr := a.A.String()
-
-	return net.JoinHostPort(addr, port), nil
 }
