@@ -7,6 +7,8 @@ import (
 	"flag"
 	"fmt"
 	"github.com/matryer/way"
+	"github.com/prometheus/client_golang/prometheus"
+"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -26,9 +28,22 @@ const (
 	limiterRate     = 0.1
 	limiterBurst    = 2
 	defaultGRPCPort = ":9090"
+	defaultPromPort = ":9091"
 	defaultAddr     = "localhost:8080"
 	defaultCfg      = "config.json"
 )
+
+var (
+	httpReqs = prometheus.NewCounter(
+    prometheus.CounterOpts{
+        Name: "http_requests_total",
+        Help: "Count of HTTP requests processed.",
+    })
+)
+
+func init() {
+	prometheus.MustRegister(httpReqs)
+}
 
 func main() {
 	var (
@@ -51,8 +66,11 @@ func main() {
 
 	go s.captureReload(ctx, StringVal(configFile))
 
-	log.Printf("[INFO] Running gRPC health checking endpoint...")
-	go s.runGRPC(ctx, StringVal(httpAddr))
+	log.Printf("[INFO] gRPC health check listening on '%s'...", defaultGRPCPort)
+	go s.runGRPC(ctx)
+
+	log.Printf("[INFO] Exposing Prometheus metrics on '%s'...", defaultPromPort)
+	go s.runPrometheus()
 
 	log.Printf("[INFO] Hello service with HTTP check listening on %s", *httpAddr)
 	log.Fatal(http.ListenAndServe(*httpAddr, s.router))
@@ -105,8 +123,13 @@ func (s *server) captureReload(ctx context.Context, cfgFile string) {
 	}
 }
 
+func (s *server) runPrometheus() {
+	http.Handle("/metrics", promhttp.Handler())
+	http.ListenAndServe(defaultPromPort, nil)
+}
+
 // Run a gRPC server exclusively for health checking
-func (s *server) runGRPC(ctx context.Context, addr string) {
+func (s *server) runGRPC(ctx context.Context) {
 	lis, err := net.Listen("tcp", defaultGRPCPort)
 	if err != nil {
 		log.Fatalf("[ERR] grpc health: %v", defaultGRPCPort, err)
@@ -119,20 +142,25 @@ func (s *server) runGRPC(ctx context.Context, addr string) {
 	svcName := strings.TrimSuffix(StringVal(s.cfg.ServiceName), "/")
 	go func() {
 		for {
-			var enableChecks bool
-			s.cfg.mu.RLock()
-			{
-				enableChecks = BoolVal(s.cfg.EnableChecks)
-			}
-			s.cfg.mu.RUnlock()
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				var enableChecks bool
+				s.cfg.mu.RLock()
+				{
+					enableChecks = BoolVal(s.cfg.EnableChecks)
+				}
+				s.cfg.mu.RUnlock()
 
-			switch enableChecks {
-			case true:
-				server.SetServingStatus(svcName, grpc_health_v1.HealthCheckResponse_SERVING)
-			case false:
-				server.SetServingStatus(svcName, grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+				switch enableChecks {
+				case true:
+					server.SetServingStatus(svcName, grpc_health_v1.HealthCheckResponse_SERVING)
+				case false:
+					server.SetServingStatus(svcName, grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+				}
+				time.Sleep(2 * time.Second)
 			}
-			time.Sleep(2 * time.Second)
 		}
 	}()
 
@@ -156,6 +184,7 @@ func (s *server) handleHello() http.HandlerFunc {
 		default:
 			fmt.Fprintln(w, "Hello World")
 		}
+		httpReqs.Inc()
 	}
 }
 
@@ -171,6 +200,7 @@ func (s *server) handleHealth() http.HandlerFunc {
 		}
 
 		fmt.Fprintln(w, "I'm alive")
+		httpReqs.Inc()
 	}
 }
 
@@ -181,6 +211,7 @@ func (s *server) disableHealth() http.HandlerFunc {
 
 		s.cfg.EnableChecks = BoolPtr(false)
 		fmt.Fprintln(w, "Health endpoint disabled.")
+		httpReqs.Inc()
 	}
 }
 
@@ -191,6 +222,7 @@ func (s *server) enableHealth() http.HandlerFunc {
 
 		s.cfg.EnableChecks = BoolPtr(true)
 		fmt.Fprintln(w, "Health endpoint enabled.")
+		httpReqs.Inc()
 	}
 }
 
