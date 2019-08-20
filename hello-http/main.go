@@ -8,23 +8,32 @@ import (
 	"fmt"
 	"github.com/matryer/way"
 	"golang.org/x/time/rate"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
+	"time"
 )
 
 const (
-	limiterRate  = 0.1
-	limiterBurst = 2
+	limiterRate     = 0.1
+	limiterBurst    = 2
+	defaultGRPCPort = ":9090"
+	defaultAddr     = "localhost:8080"
+	defaultCfg      = "config.json"
 )
 
 func main() {
 	var (
-		httpAddr   = flag.String("addr", "localhost:8080", "Hello service address.")
-		configFile = flag.String("cfg-file", "config.json", "Path to config file.")
+		httpAddr   = flag.String("addr", defaultAddr, "Hello service address.")
+		configFile = flag.String("cfg-file", defaultCfg, "Path to config file.")
 	)
 	flag.Parse()
 
@@ -40,7 +49,10 @@ func main() {
 		go s.watchKV(ctx, key)
 	}
 
-	go s.captureReload(ctx, *configFile)
+	go s.captureReload(ctx, StringVal(configFile))
+
+	log.Printf("[INFO] Running gRPC health checking endpoint...")
+	go s.runGRPC(ctx, StringVal(httpAddr))
 
 	log.Printf("[INFO] Hello service with HTTP check listening on %s", *httpAddr)
 	log.Fatal(http.ListenAndServe(*httpAddr, s.router))
@@ -90,6 +102,42 @@ func (s *server) captureReload(ctx context.Context, cfgFile string) {
 			}
 			s.cfg.mu.Unlock()
 		}
+	}
+}
+
+// Run a gRPC server exclusively for health checking
+func (s *server) runGRPC(ctx context.Context, addr string) {
+	lis, err := net.Listen("tcp", defaultGRPCPort)
+	if err != nil {
+		log.Fatalf("[ERR] grpc health: %v", defaultGRPCPort, err)
+	}
+
+	gs := grpc.NewServer()
+	server := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(gs, server)
+
+	svcName := strings.TrimSuffix(StringVal(s.cfg.ServiceName), "/")
+	go func() {
+		for {
+			var enableChecks bool
+			s.cfg.mu.RLock()
+			{
+				enableChecks = BoolVal(s.cfg.EnableChecks)
+			}
+			s.cfg.mu.RUnlock()
+
+			switch enableChecks {
+			case true:
+				server.SetServingStatus(svcName, grpc_health_v1.HealthCheckResponse_SERVING)
+			case false:
+				server.SetServingStatus(svcName, grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+			}
+			time.Sleep(2 * time.Second)
+		}
+	}()
+
+	if err := gs.Serve(lis); err != nil {
+		log.Fatalf("[ERR] grpc health: failed to serve: %v", err)
 	}
 }
 
